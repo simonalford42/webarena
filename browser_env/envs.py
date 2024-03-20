@@ -229,6 +229,44 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
         if self.reset_finished:
             self.context_manager.__exit__()
 
+    def step2(self, f):
+        '''
+        experimenting with alternative ui for actions
+        '''
+        if not self.reset_finished:
+            raise RuntimeError("Call reset first before calling step.")
+
+        success = False
+        fail_error = ""
+        try:
+            f()
+            success = True
+        except Exception as e:
+            fail_error = str(e)
+
+        # hard sleep TODO[shuyanzh] suboptimal, may need to check network
+        if self.sleep_after_execution > 0:
+            time.sleep(self.sleep_after_execution)
+
+        observation = self._get_obs()
+        observation_metadata = self._get_obs_metadata()
+        self.obs = observation
+
+        info = {
+            "page": DetachedPage(self.page.url, self.page.content()),
+            "fail_error": fail_error,
+            "observation_metadata": observation_metadata,
+        }
+        msg = (
+            observation,
+            float(success),  # reward
+            False,  # terminated
+            False,  # truncated
+            info,
+        )
+        return msg
+
+
     def step(
         self, action: Action
     ) -> tuple[dict[str, Observation], float, bool, bool, dict[str, Any]]:

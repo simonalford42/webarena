@@ -276,6 +276,11 @@ class WebThing():
             if all_results: return all_results[0]
         return None
 
+    def click2(self):
+        ''' experimenting with alternative ui for actions'''
+        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).click()
+        self.original_env.step2(f)
+
     def find_all(self, category, name=None, nth=None, **kwargs):
         return_value = []
         if self._match(category, name, nth, **kwargs):
@@ -298,7 +303,7 @@ class WebThing():
             if result:
                 return result
         return None
-    
+
     def search_forward(self, category, name=None, nth=None, **kwargs):
         """looks for a match that occurs after this node (NOT including this node!)"""
         matches = []
@@ -314,7 +319,7 @@ class WebThing():
             latest_child = parent
             parent = parent.parent
         return matches
-    
+
     def search_backward(self, category, name=None, nth=None, **kwargs):
         """looks for a match that occurs before this node (NOT including this node!)"""
         matches = []
@@ -322,7 +327,7 @@ class WebThing():
         while parent:
             if parent._match(category, name, nth, **kwargs):
                 matches.append(parent)
-            
+
             # find the index of this node in the parent's children
             index = parent.children.index(latest_child)
             prefix = parent.children[:index]
@@ -373,7 +378,7 @@ class WebThing():
         if self.parent:
             return self.parent.get_path() + " / " + self.repr_no_children()
         return self.repr_no_children()
-    
+
     def pretty_path(self, is_target=True):
         representation = f"{self.category}({repr(self.name)}"
         if self.properties:
