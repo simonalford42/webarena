@@ -94,13 +94,13 @@ async def async_is_in_viewport(
 class Action(TypedDict):
     action_type: int
     coords: npt.NDArray[np.float32]
-    element_role: int
-    element_name: str
+    element_role: int | None
+    element_name: str | None
     text: list[int]
     page_number: int
     url: str
     nth: int
-    element_id: str
+    element_id: str | None
     direction: str
     key_comb: str
     pw_code: str
@@ -430,14 +430,14 @@ def create_none_action() -> Action:
     return {
         "action_type": ActionTypes.NONE,
         "coords": np.zeros(2, dtype=np.float32),
-        "element_role": 0,
-        "element_name": "",
+        "element_role": None,
+        "element_name": None,
         "text": [],
         "page_number": 0,
         "url": "",
         "nth": 0,
         "pw_code": "",  # str that requires further processing
-        "element_id": "",
+        "element_id": None,
         "key_comb": "",
         "direction": "",
         "answer": "",
@@ -617,9 +617,9 @@ def create_keyboard_type_action(keys: list[int | str] | str) -> Action:
 
 @beartype
 def create_click_action(
-    element_id: str = "",
+    element_id: str | None = None,
     element_role: RolesType = "link",
-    element_name: str = "",
+    element_name: str | None = None,
     pw_code: str = "",
     nth: int = 0,
 ) -> Action:
@@ -639,9 +639,9 @@ def create_click_action(
 
 @beartype
 def create_hover_action(
-    element_id: str = "",
+    element_id: str | None = None,
     element_role: RolesType = "link",
-    element_name: str = "",
+    element_name: str | None = None,
     pw_code: str = "",
     nth: int = 0,
 ) -> Action:
@@ -662,9 +662,9 @@ def create_hover_action(
 @beartype
 def create_type_action(
     text: str,
-    element_id: str = "",
+    element_id: str | None = None,
     element_role: RolesType = "link",
-    element_name: str = "",
+    element_name: str | None = None,
     pw_code: str = "",
     nth: int = 0,
 ) -> Action:
@@ -729,7 +729,7 @@ def create_focus_action(
 
 @beartype
 def create_focus_and_click_action(
-    element_role: RolesType, element_name: str = "", nth: int = 0
+    element_role: RolesType, element_name: str | None = None, nth: int = 0
 ) -> Action:
     """Return a valid action object with type CLICK.
 
@@ -751,7 +751,7 @@ def create_focus_and_click_action(
 def create_focus_and_type_action(
     keys: list[int | str] | str,
     element_role: RolesType,
-    element_name: str = "",
+    element_name: str | None = None,
     nth: int = 0,
 ) -> Action:
     """Return a valid action object with type TYPE.
@@ -835,7 +835,6 @@ def execute_mouse_click(left: float, top: float, page: Page) -> None:
     viewport_size = page.viewport_size
     assert viewport_size
     x, y = left * viewport_size["width"], top * viewport_size["height"]
-    print(f"clicking at {x}, {y}")
     page.mouse.click(
         left * viewport_size["width"], top * viewport_size["height"]
     )
@@ -888,8 +887,8 @@ async def aexecute_click_current(page: APage) -> None:
 def execute_type(keys: list[int], page: Page) -> None:
     """Send keystrokes to the focused element."""
     text = "".join([_id2key[key] for key in keys])
-    page.keyboard.press("Control+A")
-    page.keyboard.press("Backspace")
+    # page.keyboard.press("Control+A")
+    # page.keyboard.press("Backspace")
     page.keyboard.type(text)
 
 
@@ -900,10 +899,12 @@ async def aexecute_type(keys: list[int], page: APage) -> None:
 
 
 def execute_focus(
-    element_role: int, element_name: str, nth: int, page: Page
+    element_role: int, element_name: str, nth: int, page: Page,
+    ignore_in_viewport: bool = False
 ) -> None:
     """Click the specified DOM element."""
     element_role_str = _id2role[element_role]
+
     if page.viewport_size is None:
         raise ValueError("Viewport size is not set for the current page")
     element_location_list: list[tuple[Locator, float, float]] = []
@@ -921,7 +922,7 @@ def execute_focus(
                 )
         for locator_idx in range(locators.count()):
             locator = locators.nth(locator_idx)
-            if is_in_viewport(locator, page.viewport_size):
+            if is_in_viewport(locator, page.viewport_size) or ignore_in_viewport:
                 bounding_box = locator.bounding_box()
                 assert bounding_box
                 element_location_list.append(
@@ -1128,19 +1129,18 @@ def execute_action(
         case ActionTypes.CLICK:
             # check each kind of locator in order
             # TODO[shuyanzh]: order is temp now
-            if action["element_id"]:
+            if action["element_id"] is not None:
                 element_id = action["element_id"]
-
                 element_center = obseration_processor.get_element_center(element_id)  # type: ignore[attr-defined]
                 if element_center[1] > 1 or element_center[1] < 0:
                     print("attempt to click element outside of viewport")
                     assert False, "attempt to click an element outside of viewport"
                 execute_mouse_click(element_center[0], element_center[1], page)
-            elif action["element_role"] and action["element_name"]:
+            elif action["element_role"] is not None and action["element_name"] is not None:
                 element_role = int(action["element_role"])
                 element_name = action["element_name"]
                 nth = action["nth"]
-                execute_focus(element_role, element_name, nth, page)
+                execute_focus(element_role, element_name, nth, page, ignore_in_viewport=True)
                 execute_click_current(page)
             elif action["pw_code"]:
                 parsed_code = parse_playwright_code(action["pw_code"])
@@ -1150,15 +1150,15 @@ def execute_action(
             else:
                 raise ValueError("No proper locator found for click action")
         case ActionTypes.HOVER:
-            if action["element_id"]:
+            if action["element_id"] is not None:
                 element_id = action["element_id"]
                 element_center = obseration_processor.get_element_center(element_id)  # type: ignore[attr-defined]
                 execute_mouse_hover(element_center[0], element_center[1], page)
-            elif action["element_role"] and action["element_name"]:
+            elif action["element_role"] is not None and action["element_name"] is not None:
                 element_role = int(action["element_role"])
                 element_name = action["element_name"]
                 nth = action["nth"]
-                execute_focus(element_role, element_name, nth, page)
+                execute_focus(element_role, element_name, nth, page, ignore_in_viewport=True)
             elif action["pw_code"]:
                 parsed_code = parse_playwright_code(action["pw_code"])
                 locator_code = parsed_code[:-1]
@@ -1169,16 +1169,16 @@ def execute_action(
                     "No proper locator found for hover action"
                 )
         case ActionTypes.TYPE:
-            if action["element_id"]:
+            if action["element_id"] is not None:
                 element_id = action["element_id"]
                 element_center = obseration_processor.get_element_center(element_id)  # type: ignore[attr-defined]
                 execute_mouse_click(element_center[0], element_center[1], page)
                 execute_type(action["text"], page)
-            elif action["element_role"] and action["element_name"]:
+            elif action["element_role"] is not None and action["element_name"] is not None:
                 element_role = int(action["element_role"])
                 element_name = action["element_name"]
                 nth = action["nth"]
-                execute_focus(element_role, element_name, nth, page)
+                execute_focus(element_role, element_name, nth, page, ignore_in_viewport=True)
                 execute_type(action["text"], page)
             elif action["pw_code"]:
                 parsed_code = parse_playwright_code(action["pw_code"])
@@ -1504,7 +1504,6 @@ def create_playwright_action(playwright_code: str) -> Action:
             return create_stop_action(answer)
 
     raise ActionParsingError(f"Unknown playwright action {action}")
-
 
 @beartype
 def create_id_based_action(action_str: str) -> Action:

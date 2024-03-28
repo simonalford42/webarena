@@ -220,7 +220,12 @@ class URLEvaluator(Evaluator):
         matching_rule = configs["eval"].get("url_note", "GOLD in PRED")
         if matching_rule == "GOLD in PRED":
             ref_base_paths, ref_queries = parse_urls(ref_urls)
+            print(f'{ref_base_paths=}')
             pred_base_paths, pred_query = parse_url(pred)
+            print(f'{pred_base_paths=}')
+
+            print(f'{ref_queries=}')
+            print(f'{pred_query=}')
 
             base_score = float(
                 any(
@@ -239,6 +244,7 @@ class URLEvaluator(Evaluator):
                     )
                 )
             score = base_score * query_score
+            print(f'url score {score}')
 
         else:
             raise ValueError(f"Unknown matching rule: {matching_rule}")
@@ -379,11 +385,11 @@ def evaluator_router(config_file: Path | str) -> EvaluatorComb:
 @beartype
 def evaluator_closure(config_file: Path | str):
     evaluator = evaluator_router(config_file)
-    
+
     def eval():
         env = WebThing.root.original_env
         # the trajectory is supposed to end with an action
-        if not ("action_type" in str(WebThing.low_level_trajectory[-1])):
+        if "action_type" not in WebThing.low_level_trajectory[-1]:
             WebThing.low_level_trajectory.append(create_stop_action(""))
             dummy_action = True
         else:

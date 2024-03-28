@@ -1,4 +1,4 @@
-from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action
+from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_click_action, create_type_action, create_hover_action, create_keyboard_type_action
 
 import dateparser
 import re
@@ -41,8 +41,8 @@ class WebThing():
 
     # trajectory in terms of high level WebThing actions, used for learning from demonstration
     # each element of the trajectory is a tuple (triple), where:
-    # the first element is an URL, 
-    # second element is WebThing object representing the entire webpage, 
+    # the first element is an URL,
+    # second element is WebThing object representing the entire webpage,
     # and the last element is a WebThing API call (what we did at that URL)
     high_level_trajectory = []
 
@@ -277,11 +277,6 @@ class WebThing():
             if all_results: return all_results[0]
         return None
 
-    def click2(self):
-        ''' experimenting with alternative ui for actions'''
-        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).click()
-        self.original_env.step2(f)
-
     def find_all(self, category, name=None, nth=None, **kwargs):
         return_value = []
         if self._match(category, name, nth, **kwargs):
@@ -462,17 +457,42 @@ class WebThing():
     def click(self):
         self._record_high_level_action("click")
         self._make_in_viewport()
+        # action = create_click_action(element_role=self.category, element_name=self.name, nth=self.nth)
+        # self._do_action(action)
         self._do_action(create_id_based_action(f"click [{self.id}]"))
 
     def type(self, text):
         self._record_high_level_action("type", text)
         self._make_in_viewport()
-        self._do_action(create_type_action(text=text+"\n", element_id=str(self.id)))
+        self._do_action(create_type_action(text=text, element_id=str(self.id)))
+
+    def press_enter(self):
+        self._record_high_level_action("press enter")
+        self._make_in_viewport()
+        self._do_action(create_keyboard_type_action("\n"))
+
+    def type2(self, text):
+        def f():
+            self.original_env.page.get_by_role(self.category, name=self.name).click()
+            self.original_env.page.keyboard.type(text)
+            #  self.original_env.page.get_by_role(self.category, name=self.name).fill(text)
+        self.original_env.step2(f)
+
+    def type3(self, text):
+        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).pressSequentially(text)
+        self.original_env.step2(f)
+
+    def click2(self):
+        ''' experimenting with alternative ui for actions'''
+        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).click()
+        self.original_env.step2(f)
 
     def hover(self):
         self._record_high_level_action("hover")
-        self._make_in_viewport()
-        self._do_action(create_id_based_action(f"hover [{self.id}]"))
+        action = create_hover_action(element_role=self.category, element_name=self.name, nth=self.nth)
+        self._do_action(action)
+        # self._make_in_viewport()
+        # self._do_action(create_id_based_action(f"hover [{self.id}]"))
 
     def has_duplicate(self, category, name):
         all_things = self.all_things()
@@ -583,22 +603,22 @@ class WebThing():
     @staticmethod
     def _strip_root():
         return WebThing.root._strip(memo=None)
-    
+
     # Removes all non-pickle-able things from the tree, particularly which refer to the environment
     # Has the invariant that the parent has always already been added to the memo table
     def _strip(self, memo=None):
 
         if memo is None:
             memo = dict()
-        
+
         if id(self) in memo:
             return memo[id(self)]
-        
+
         new_parent = memo[id(self.parent)] if self.parent else None
         new_children = list() # cannot recurs on the children without breaking the invariant
         new_thing = WebThing(self.category, self.name, self.id, new_parent, new_children,
                              self.property_names, self.property_values, original_env=None, nth=self.nth)
-        
+
         memo[id(self)] = new_thing
 
         # now we can do the children
@@ -606,4 +626,3 @@ class WebThing():
             new_thing.children.append(child._strip(memo))
 
         return new_thing
-        

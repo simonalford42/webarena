@@ -266,7 +266,6 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
         )
         return msg
 
-
     def step(
         self, action: Action
     ) -> tuple[dict[str, Observation], float, bool, bool, dict[str, Any]]:
@@ -284,6 +283,7 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
             )
             success = True
         except Exception as e:
+            print(f"Failed to execute action {action}: {e}")
             fail_error = str(e)
 
         # hard sleep TODO[shuyanzh] suboptimal, may need to check network
