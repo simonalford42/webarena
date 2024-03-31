@@ -398,8 +398,12 @@ class WebThing():
         representation += ")"
 
         if is_target:
-            assert self.parent
-            return representation + f", nth={self.nth}, which is under " + self.parent.pretty_path(is_target=False)
+            #assert self.parent
+            if self.parent:
+                parent_path = self.parent.pretty_path(is_target=False)
+            else:
+                parent_path = "none"
+            return representation + f", nth={self.nth}, which is under " + parent_path
         else:
             if self.parent:
                 if "list" in self.category and self.name == "":
