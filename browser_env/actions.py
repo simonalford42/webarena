@@ -835,9 +835,7 @@ def execute_mouse_click(left: float, top: float, page: Page) -> None:
     viewport_size = page.viewport_size
     assert viewport_size
     x, y = left * viewport_size["width"], top * viewport_size["height"]
-    page.mouse.click(
-        left * viewport_size["width"], top * viewport_size["height"]
-    )
+    page.mouse.click(x, y)
 
 
 async def aexecute_mouse_click(left: float, top: float, page: APage) -> None:
