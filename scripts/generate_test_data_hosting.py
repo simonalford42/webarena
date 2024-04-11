@@ -1,8 +1,12 @@
 """Replace the website placeholders with website domains from env_config
 Generate the test data"""
 import json
-from utils import setup_urls
-setup_urls()
+
+# done in utils.py
+if __name__ == "__main__":
+    from utils import setup_urls
+    setup_urls()
+
 from webarena.browser_env.env_config import *
 
 
