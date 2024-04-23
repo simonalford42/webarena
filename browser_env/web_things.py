@@ -104,6 +104,7 @@ class WebThing():
     def _make_in_viewport(self):
         target_height = 0.3
         old_ys = []
+        first_time = True
         while True:
             center = self._center()
             y = center[1]
@@ -115,11 +116,26 @@ class WebThing():
             elif y > 1:
                 self._do_action(create_id_based_action(f"scroll [down]"), pause=0.2)
             elif 0 <= y <= target_height:
+                if first_time:
+                    self.blur()
+                    first_time = False
                 self._do_action(create_id_based_action(f"press [arrowup]"), pause=0.2)
             elif 0.5+target_height <= y <= 1:
+                if first_time:
+                    self.blur()
+                    first_time = False
                 self._do_action(create_id_based_action(f"press [arrowdown]"), pause=0.2)
             else:
                 break
+
+    def blur(self):
+        """ remove keyboard focus from currently focused element """
+        # per Claude AI recommendation
+        WebThing.root.original_env.page.locator('body').evaluate(
+            "() => document.activeElement && document.activeElement.blur()")
+
+    def go_back(self):
+        return WebThing.root.original_env.step(create_id_based_action(f"go_back"))
 
     def get_all_children(self):
         """Recursively extracts all children of this node"""
@@ -345,17 +361,17 @@ class WebThing():
             try: return getattr(self.properties["datetime"], name)
             except: pass
         raise AttributeError(f"'{self.category}' object has no attribute '{name}'")
-    
+
     # __getattr__ interferes with pickle
     # so we have to define custom __getstate__ and __setstate__ to handle the properties
     # WARNING: if you add new fields, you need to update __getstate__ and __setstate__ as well
     def __getstate__(self):
         return (self.category, self.name, self.id, self.parent, self.children, self.property_names, self.property_values, self.properties, self.nth)
-    
+
     def __setstate__(self, state):
         self.category, self.name, self.id, self.parent, self.children, self.property_names, self.property_values, self.properties, self.nth = state
         self.original_env = None
-        self.efficient_path = None    
+        self.efficient_path = None
 
     def serialize(self, indent=0):
         serialization = f"{'    '*indent}[{self.id}] {self.category} '{self.name}'"
@@ -398,8 +414,10 @@ class WebThing():
         representation += ")"
 
         if is_target:
-            assert self.parent
-            return representation + f", nth={self.nth}, which is under " + self.parent.pretty_path(is_target=False)
+            if self.parent:
+                return representation + f", nth={self.nth}, which is under " + self.parent.pretty_path(is_target=False)
+            else:
+                return representation
         else:
             if self.parent:
                 if "list" in self.category and self.name == "":
@@ -438,7 +456,7 @@ class WebThing():
                 self.property_values.append(child.name)
                 self.properties["relative"] = child.name
                 continue
-            if child.category.lower() in ["article", "contentinfo", "svgroot"]:
+            if child.category.lower() in ["article", "contentinfo", "svgroot"] and len(child.children) == 0:
                 continue
             if self.category == "button":
                 continue
@@ -483,12 +501,12 @@ class WebThing():
 
     def press_enter(self):
         self._record_high_level_action("press enter")
-        self._make_in_viewport()
+        # self._make_in_viewport() # since I added defocus, this needs to not be used
         self._do_action(create_keyboard_type_action("\n"))
 
     def type2(self, text):
+        self.click2()
         def f():
-            self.original_env.page.get_by_role(self.category, name=self.name).click()
             self.original_env.page.keyboard.type(text)
             #  self.original_env.page.get_by_role(self.category, name=self.name).fill(text)
         self.original_env.step2(f)
@@ -499,7 +517,11 @@ class WebThing():
 
     def click2(self):
         ''' experimenting with alternative ui for actions'''
-        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).click()
+        def f():
+            element = self.original_env.page.get_by_role(self.category, name=self.name)
+            element.scroll_into_view_if_needed()
+            element.click()
+
         self.original_env.step2(f)
 
     def hover(self):

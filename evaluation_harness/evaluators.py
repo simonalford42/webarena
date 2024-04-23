@@ -89,6 +89,8 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def exact_match(ref: str, pred: str) -> float:
+        print(f'{ref=}')
+        print(f'{pred=}')
         return float(
             StringEvaluator.clean_answer(pred)
             == StringEvaluator.clean_answer(ref)
@@ -98,7 +100,9 @@ class StringEvaluator(Evaluator):
     @beartype
     def must_include(ref: str, pred: str, tokenize: bool = False) -> float:
         clean_ref = StringEvaluator.clean_answer(ref)
+        print(f'{clean_ref=}')
         clean_pred = StringEvaluator.clean_answer(pred)
+        print(f'{clean_pred=}')
         # tokenize the answer if the ref is a single word
         # prevent false positive (e.g, 0)
         if (
@@ -214,18 +218,15 @@ class URLEvaluator(Evaluator):
             return base_paths, queries
 
         pred = clean_url(page.url)
+        print(f'{pred=}')
         ref_urls = configs["eval"]["reference_url"].split(" |OR| ")
+        print(f'{ref_urls=}')
         ref_urls = [clean_url(url) for url in ref_urls]
 
         matching_rule = configs["eval"].get("url_note", "GOLD in PRED")
         if matching_rule == "GOLD in PRED":
             ref_base_paths, ref_queries = parse_urls(ref_urls)
-            print(f'{ref_base_paths=}')
             pred_base_paths, pred_query = parse_url(pred)
-            print(f'{pred_base_paths=}')
-
-            print(f'{ref_queries=}')
-            print(f'{pred_query=}')
 
             base_score = float(
                 any(
@@ -244,7 +245,6 @@ class URLEvaluator(Evaluator):
                     )
                 )
             score = base_score * query_score
-            print(f'url score {score}')
 
         else:
             raise ValueError(f"Unknown matching rule: {matching_rule}")
@@ -318,6 +318,7 @@ class HTMLContentEvaluator(Evaluator):
                 cur_score = StringEvaluator.exact_match(
                     ref=required_contents, pred=selected_element
                 )
+                print(f'{cur_score=}')
                 score *= float(cur_score)
             elif "must_include" in target["required_contents"]:
                 required_contents = target["required_contents"]["must_include"]
@@ -334,6 +335,7 @@ class HTMLContentEvaluator(Evaluator):
                             for content in content_or
                         ]
                     )
+                    print(f'{cur_score=}')
                     score *= float(cur_score)
             else:
                 raise ValueError(
