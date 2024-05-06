@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from gymnasium import spaces
 from playwright.sync_api import CDPSession, Page, ViewportSize
+from utils import log_to_file
 
 from webarena.browser_env.constants import (
     ASCII_CHARSET,

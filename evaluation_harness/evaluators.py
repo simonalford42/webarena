@@ -89,8 +89,8 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def exact_match(ref: str, pred: str) -> float:
-        print(f'{ref=}')
-        print(f'{pred=}')
+        # print(f'{ref=}')
+        # print(f'{pred=}')
         return float(
             StringEvaluator.clean_answer(pred)
             == StringEvaluator.clean_answer(ref)
@@ -100,9 +100,9 @@ class StringEvaluator(Evaluator):
     @beartype
     def must_include(ref: str, pred: str, tokenize: bool = False) -> float:
         clean_ref = StringEvaluator.clean_answer(ref)
-        print(f'{clean_ref=}')
+        # print(f'{clean_ref=}')
         clean_pred = StringEvaluator.clean_answer(pred)
-        print(f'{clean_pred=}')
+        # print(f'{clean_pred=}')
         # tokenize the answer if the ref is a single word
         # prevent false positive (e.g, 0)
         if (
@@ -218,9 +218,9 @@ class URLEvaluator(Evaluator):
             return base_paths, queries
 
         pred = clean_url(page.url)
-        print(f'{pred=}')
+        # print(f'{pred=}')
         ref_urls = configs["eval"]["reference_url"].split(" |OR| ")
-        print(f'{ref_urls=}')
+        # print(f'{ref_urls=}')
         ref_urls = [clean_url(url) for url in ref_urls]
 
         matching_rule = configs["eval"].get("url_note", "GOLD in PRED")
@@ -318,7 +318,7 @@ class HTMLContentEvaluator(Evaluator):
                 cur_score = StringEvaluator.exact_match(
                     ref=required_contents, pred=selected_element
                 )
-                print(f'{cur_score=}')
+                # print(f'{cur_score=}')
                 score *= float(cur_score)
             elif "must_include" in target["required_contents"]:
                 required_contents = target["required_contents"]["must_include"]
@@ -335,12 +335,13 @@ class HTMLContentEvaluator(Evaluator):
                             for content in content_or
                         ]
                     )
-                    print(f'{cur_score=}')
+                    # print(f'{cur_score=}')
                     score *= float(cur_score)
             else:
                 raise ValueError(
                     f"Unknown required_contents: {target['required_contents'].keys()}"
                 )
+
         return score
 
 
