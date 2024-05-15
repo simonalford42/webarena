@@ -1,35 +1,7 @@
-from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_type_action, create_hover_action, create_keyboard_type_action
+from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_type_action, create_keyboard_type_action
 
 import dateparser
 import re
-
-def new_tab():
-    return WebThing.root.original_env.step(create_id_based_action("new_tab"))
-
-def stop(text=""):
-    return WebThing.root.original_env.step(create_id_based_action(f"stop [{text}]"))
-
-def goto(link):
-    return WebThing.root.original_env.step(create_id_based_action(f"goto [{link}]"))
-
-def go_back():
-    return WebThing.root.original_env.step(create_id_based_action(f"go_back"))
-
-def scroll(direction):
-    return WebThing.root.original_env.step(create_id_based_action(f"scroll [{direction}]"))
-
-def press(key):
-    return WebThing.root.original_env.step(create_id_based_action(f"press [{key}]"))
-
-def go_forward():
-    return WebThing.root.original_env.step(create_id_based_action("go_forward"))
-
-def tab_focus(tab_number):
-    return WebThing.root.original_env.step(create_id_based_action(f"tab_focus [{tab_number}]"))
-
-def close_tab():
-    return WebThing.root.original_env.step(create_id_based_action("close_tab"))
-
 
 class WebThing():
     root = None # effectively a global variable that refers to the current state of the web page
@@ -67,55 +39,67 @@ class WebThing():
         if category == "time":
             self.properties["datetime"] = dateparser.parse(self.name)
 
-    def find(self, category='.*', name='.*', nth=None, **kwargs):
-        all_results = self.find_all(category, name, nth, **kwargs)
+    def find(self, category=None, name=None, nth=None, match_substrings: bool = False, **kwargs):
+        '''
+        category and name can be None, a string, or a regex.
+        None matches anything.
+        '''
+        all_results = self.find_all(category, name, nth, match_substrings, **kwargs)
         if all_results:
             return all_results[0]
+
         # if we didn't find it, try (1) literal match, (2) case insensitive match
         if name:
-            all_results = self.find_all(category, re.escape(name), nth, **kwargs)
+            # try literal match
+            c = None if category is None else re.escape(category)
+            n = re.escape(name)
+            all_results = self.find_all(c, n, nth, match_substrings, **kwargs)
             if all_results: return all_results[0]
 
-            all_results = self.find_all(category, re.compile(name, re.IGNORECASE), nth, **kwargs)
+            # try case insensitive match
+            c = None if category is None else re.compile(category, re.IGNORECASE)
+            n = re.compile(name, re.IGNORECASE)
+            all_results = self.find_all(c, n, nth, match_substrings, **kwargs)
             if all_results: return all_results[0]
         return None
 
-    def find_all(self, category='.*', name='.*', nth=None, **kwargs):
+    def find_all(self, category=None, name=None, nth=None, match_substrings=False, **kwargs):
         return_value = []
-        if self._match(category, name, nth, **kwargs):
+        if self._match(category, name, nth, match_substrings, **kwargs):
             return_value.append(self)
         for child in self.children:
-            return_value.extend(child.find_all(category, name, nth, **kwargs))
+            return_value.extend(child.find_all(category, name, nth, match_substrings, **kwargs))
         return return_value
 
-    def search_forward(self, category='.*', name='.*', nth=None, **kwargs):
+    def search_forward(self, category=None, name=None, match_substrings=False, **kwargs):
         """looks for a match that occurs after this node (NOT including this node!)"""
         matches = []
-        for child in self.children: matches.extend(child.find_all(category, name, nth, **kwargs))
+        for child in self.children: matches.extend(child.find_all(category, name, match_substrings=match_substrings, **kwargs))
         # now we have to go through our parents and search any of their children that come after us
         parent, latest_child = self.parent, self
         while parent:
             # find the index of this node in the parent's children
             index = parent.children.index(latest_child)
             suffix = parent.children[index+1:]
-            for sibling in suffix: matches.extend(sibling.find_all(category, name, nth, **kwargs))
+            for sibling in suffix: matches.extend(sibling.find_all(category, name, match_substrings=match_substrings, **kwargs))
 
             latest_child = parent
             parent = parent.parent
+
         return matches
 
-    def search_backward(self, category='.*', name='.*', nth=None, **kwargs):
+    def search_backward(self, category=None, name=None, match_substrings=False, **kwargs):
         """looks for a match that occurs before this node (NOT including this node!)"""
         matches = []
         parent, latest_child = self.parent, self
         while parent:
-            if parent._match(category, name, nth, **kwargs):
+            if parent._match(category, name, match_substrings=match_substrings, **kwargs):
                 matches.append(parent)
 
             # find the index of this node in the parent's children
             index = parent.children.index(latest_child)
             prefix = parent.children[:index]
-            for sibling in reversed(prefix): matches.extend(sibling.find_all(category, name, nth, **kwargs))
+            for sibling in reversed(prefix): matches.extend(sibling.find_all(category, name, match_substrings=match_substrings, **kwargs))
 
             latest_child = parent
             parent = parent.parent
@@ -163,6 +147,23 @@ class WebThing():
         WebThing.low_level_trajectory = list()
         WebThing.high_level_trajectory = list()
 
+    def _match(self, category, name, nth=None, match_substrings=False, **kwargs):
+        if match_substrings:
+            return (
+                (category is None or re.search(category, self.category))
+                and (name is None or re.search(name, self.name))
+                and (nth is None or self.nth == nth)
+                and all(getattr(self, key, None) == value for key, value in kwargs.items())
+            )
+        else:
+            # regexes must match the full string
+            return (
+                (category is None or re.fullmatch(category, self.category))
+                and (name is None or re.fullmatch(name, self.name))
+                and (nth is None or self.nth == nth)
+                and all(getattr(self, key, None) == value for key, value in kwargs.items())
+            )
+
     def _record_high_level_action(self, method_name, *args, **kwargs):
         WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (self, method_name, args, kwargs)))
 
@@ -192,7 +193,8 @@ class WebThing():
         target_height = 0.3
         old_ys = []
         # disabled blurring because it seems to mess up clicking menuitems from drop down menus
-        # first_time = True
+        # we might just have to settle for centering not working sometimes?
+        first_time = True
         while True:
             center = self._center()
             y = center[1]
@@ -204,18 +206,24 @@ class WebThing():
             elif y > 1:
                 self._do_action(create_id_based_action(f"scroll [down]"), pause=0.2)
             elif 0 <= y <= target_height:
-                # if first_time:
-                    # make sure nothing is selected, otherwise the arrow presses might
-                    # change the selection instead of scrolling
-                    # self._blur()
-                    # first_time = False
+                if first_time:
+                    # if some element besides self is focused, blur it
+                    for element in WebThing.root.get_all_descendants():
+                        if element.properties.get("focused", True) and element != self:
+                            WebThing._blur()
+                            break
+
+                    first_time = False
                 self._do_action(create_id_based_action(f"press [arrowup]"), pause=0.2)
             elif 0.5+target_height <= y <= 1:
-                # if first_time:
-                    # make sure nothing is selected, otherwise the arrow presses might
-                    # change the selection instead of scrolling
-                    # self.blur()
-                    # first_time = False
+                if first_time:
+                    # if some element besides self is focused, blur it
+                    for element in WebThing.root.get_all_descendants():
+                        if element.properties.get("focused", True) and element != self:
+                            WebThing._blur()
+                            break
+
+                    first_time = False
                 self._do_action(create_id_based_action(f"press [arrowdown]"), pause=0.2)
             else:
                 break
@@ -343,14 +351,6 @@ class WebThing():
 
         return f"UNDEFINED({self.category} {self.name})"
 
-    def _match(self, category, name, nth=None, **kwargs):
-        return (
-            self.category == category
-            and (name is None or re.fullmatch(name, self.name))
-            and (nth is None or self.nth == nth)
-            and all(getattr(self, key, None) == value for key, value in kwargs.items())
-        )
-
     # make it so that you can do like `thing.a_property`
     def __getattr__(self, name):
         if name in self.properties:
@@ -374,7 +374,13 @@ class WebThing():
     def serialize(self, indent=0):
         serialization = f"{'    '*indent}[{self.id}] {self.category} '{self.name}'"
         if self.properties:
-            serialization += " " + " ".join(f"{key}={self.properties[key]}" for key in self.property_names)
+            try:
+                serialization += " " + " ".join(f"{key}={self.properties[key]}" for key in self.property_names)
+            except KeyError as e:
+                print(self.property_names)
+                print(self.properties.keys())
+                import pdb; pdb.set_trace()
+
         serialization += "\n"
         for child in self.children:
             serialization += child.serialize(indent+1)
@@ -382,8 +388,7 @@ class WebThing():
 
     def pretty(self, indent=0):
         """pretty print it in a way that the llm (hopefully) understands"""
-        # serialization = f"{'    '*indent}category='{self.category}', name='{self.name}', nth={self.nth}"
-        serialization = f"{'    '*indent}category='{self.category}', name='{self.name}'"
+        serialization = f"{'    '*indent}category='{self.category}', name='{self.name}', nth={self.nth}"
         if self.properties:
             serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.property_names)
         serialization += "\n"
@@ -392,7 +397,7 @@ class WebThing():
         return serialization
 
     def pretty_path(self, is_target=True):
-        representation = f"{self.category}({repr(self.name)}"
+        representation = f"{self.category}({repr(self.name)}, nth={self.nth}"
         if self.properties:
             for property_name in self.property_names:
                 representation += f", {property_name}={self.properties[property_name]}"
@@ -473,7 +478,7 @@ class WebThing():
         # self._make_in_viewport()
         # self._do_action(create_id_based_action(f"hover [{self.id}]"))
 
-    def _blur(self):
+    def _blur():
         """ remove keyboard focus from currently focused element """
         # per Claude AI recommendation
         WebThing.root.original_env.page.locator('body').evaluate(
