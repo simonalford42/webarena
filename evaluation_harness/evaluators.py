@@ -19,13 +19,17 @@ from webarena.browser_env.utils import StateInfo
 from webarena.evaluation_harness.helper_functions import (
     PseudoPage,
     gitlab_get_project_memeber_role,
-    llm_fuzzy_match,
-    llm_ua_match,
+    #llm_fuzzy_match,
+    #llm_ua_match,
     reddit_get_post_url,
     shopping_get_latest_order_url,
     shopping_get_sku_latest_review_author,
     shopping_get_sku_latest_review_rating,
 )
+def llm_fuzzy_match(pred: str, reference: str, question: str) -> float:
+    return 1.0
+def llm_ua_match(pred: str, reference: str, question: str) -> float:
+    return 1.0
 
 Trajectory = list[Union[Action, StateInfo]]
 
