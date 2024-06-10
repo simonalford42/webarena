@@ -1,4 +1,4 @@
-from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_type_action, create_keyboard_type_action
+from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_type_action, create_keyboard_type_action, Action, ActionTypes
 
 import dateparser
 import re
@@ -7,6 +7,9 @@ class WebThing():
     root = None # effectively a global variable that refers to the current state of the web page
 
     URL = None # global variable for the current URL
+
+    TOOK_ACTION_ALREADY = False # global variable to help track actions with more than one `click`, `type`, etc.
+    RAISE_EXCEPTION_FOR_SECOND_ACTION = False
 
     # effectively a global variable that refers to the current trajectory. in terms of backend actions, used for evaluation
     low_level_trajectory = []
@@ -75,6 +78,7 @@ class WebThing():
         """looks for a match that occurs after this node (NOT including this node!)"""
         matches = []
         for child in self.children: matches.extend(child.find_all(category, name, match_substrings=match_substrings, **kwargs))
+
         # now we have to go through our parents and search any of their children that come after us
         parent, latest_child = self.parent, self
         while parent:
@@ -127,7 +131,7 @@ class WebThing():
         self._do_action(create_type_action(text=text, element_id=str(self.id)))
 
     def press_enter(self):
-        self._record_high_level_action("press enter")
+        self._record_high_level_action("press_enter")
         self._do_action(create_keyboard_type_action("\n"))
 
     def go_back(self):
@@ -140,7 +144,7 @@ class WebThing():
 
     @staticmethod
     def answer(text):
-        WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (None, "answer", (text,), {})))
+        WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (None, "print", (f'"{text}"',), {})))
         WebThing.low_level_trajectory.append(create_stop_action(text))
 
     def reset_trajectory():
@@ -167,11 +171,17 @@ class WebThing():
     def _record_high_level_action(self, method_name, *args, **kwargs):
         WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (self, method_name, args, kwargs)))
 
-    def _do_action(self, action, pause=None):
+    def _do_action(self, action: Action, pause=None):
         """
         helper function that makes sure that states+actions are recorded in the trajectory.
         not used by the agent, which uses higher level functions like `click` and `type` instead.
         """
+        if action['action_type'] in [ActionTypes.CLICK, ActionTypes.TYPE, ActionTypes.GO_BACK]:
+            if WebThing.TOOK_ACTION_ALREADY and WebThing.RAISE_EXCEPTION_FOR_SECOND_ACTION:
+                raise Exception("Attempted to take a second state-changing code action in a single code extension.")
+
+            WebThing.TOOK_ACTION_ALREADY = True
+
         WebThing.low_level_trajectory.append(action)
         if pause:
             old_sleep = self.original_env.sleep_after_execution
@@ -390,7 +400,13 @@ class WebThing():
         """pretty print it in a way that the llm (hopefully) understands"""
         serialization = f"{'    '*indent}category='{self.category}', name='{self.name}', nth={self.nth}"
         if self.properties:
-            serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.property_names)
+            try:
+                serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.property_names)
+            except KeyError as e:
+                print(self.property_names)
+                print(self.properties.keys())
+                import pdb; pdb.set_trace()
+
         serialization += "\n"
         for child in self.children:
             serialization += child.pretty(indent+1)

@@ -103,7 +103,8 @@ class StringEvaluator(Evaluator):
         clean_ref = StringEvaluator.clean_answer(ref)
         clean_pred = StringEvaluator.clean_answer(pred)
         # print(f'{clean_ref=}')
-        print(f"must include prediction = '{clean_pred}'")
+        if len(clean_pred) < 200:
+            print(f"must include prediction = '{clean_pred}'")
 
         # tokenize the answer if the ref is a single word
         # prevent false positive (e.g, 0)
