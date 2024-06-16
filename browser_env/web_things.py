@@ -1,40 +1,15 @@
-from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_click_action, create_type_action, create_hover_action, create_keyboard_type_action
+from webarena.browser_env import create_id_based_action, create_type_action, create_stop_action, create_none_action, create_type_action, create_keyboard_type_action, Action, ActionTypes
 
 import dateparser
 import re
-
-def new_tab():
-    return WebThing.root.original_env.step(create_id_based_action("new_tab"))
-
-def stop(text=""):
-    return WebThing.root.original_env.step(create_id_based_action(f"stop [{text}]"))
-
-def goto(link):
-    return WebThing.root.original_env.step(create_id_based_action(f"goto [{link}]"))
-
-def go_back():
-    return WebThing.root.original_env.step(create_id_based_action(f"go_back"))
-
-def scroll(direction):
-    return WebThing.root.original_env.step(create_id_based_action(f"scroll [{direction}]"))
-
-def press(key):
-    return WebThing.root.original_env.step(create_id_based_action(f"press [{key}]"))
-
-def go_forward():
-    return WebThing.root.original_env.step(create_id_based_action("go_forward"))
-
-def tab_focus(tab_number):
-    return WebThing.root.original_env.step(create_id_based_action(f"tab_focus [{tab_number}]"))
-
-def close_tab():
-    return WebThing.root.original_env.step(create_id_based_action("close_tab"))
-
 
 class WebThing():
     root = None # effectively a global variable that refers to the current state of the web page
 
     URL = None # global variable for the current URL
+
+    TOOK_ACTION_ALREADY = False # global variable to help track actions with more than one `click`, `type`, etc.
+    RAISE_EXCEPTION_FOR_SECOND_ACTION = False
 
     # effectively a global variable that refers to the current trajectory. in terms of backend actions, used for evaluation
     low_level_trajectory = []
@@ -67,23 +42,146 @@ class WebThing():
         if category == "time":
             self.properties["datetime"] = dateparser.parse(self.name)
 
+    def find(self, category=None, name=None, nth=None, match_substrings: bool = False, **kwargs):
+        '''
+        category and name can be None, a string, or a regex.
+        None matches anything.
+        '''
+        all_results = self.find_all(category, name, nth, match_substrings, **kwargs)
+        if all_results:
+            return all_results[0]
+
+        # if we didn't find it, try (1) literal match, (2) case insensitive match
+        if name:
+            # try literal match
+            c = None if category is None else re.escape(category)
+            n = re.escape(name)
+            all_results = self.find_all(c, n, nth, match_substrings, **kwargs)
+            if all_results: return all_results[0]
+
+            # try case insensitive match
+            c = None if category is None else re.compile(category, re.IGNORECASE)
+            n = re.compile(name, re.IGNORECASE)
+            all_results = self.find_all(c, n, nth, match_substrings, **kwargs)
+            if all_results: return all_results[0]
+        return None
+
+    def find_all(self, category=None, name=None, nth=None, match_substrings=False, **kwargs):
+        return_value = []
+        if self._match(category, name, nth, match_substrings, **kwargs):
+            return_value.append(self)
+        for child in self.children:
+            return_value.extend(child.find_all(category, name, nth, match_substrings, **kwargs))
+        return return_value
+
+    def search_forward(self, category=None, name=None, match_substrings=False, **kwargs):
+        """looks for a match that occurs after this node (NOT including this node!)"""
+        matches = []
+        for child in self.children: matches.extend(child.find_all(category, name, match_substrings=match_substrings, **kwargs))
+
+        # now we have to go through our parents and search any of their children that come after us
+        parent, latest_child = self.parent, self
+        while parent:
+            # find the index of this node in the parent's children
+            index = parent.children.index(latest_child)
+            suffix = parent.children[index+1:]
+            for sibling in suffix: matches.extend(sibling.find_all(category, name, match_substrings=match_substrings, **kwargs))
+
+            latest_child = parent
+            parent = parent.parent
+
+        return matches
+
+    def search_backward(self, category=None, name=None, match_substrings=False, **kwargs):
+        """looks for a match that occurs before this node (NOT including this node!)"""
+        matches = []
+        parent, latest_child = self.parent, self
+        while parent:
+            if parent._match(category, name, match_substrings=match_substrings, **kwargs):
+                matches.append(parent)
+
+            # find the index of this node in the parent's children
+            index = parent.children.index(latest_child)
+            prefix = parent.children[:index]
+            for sibling in reversed(prefix): matches.extend(sibling.find_all(category, name, match_substrings=match_substrings, **kwargs))
+
+            latest_child = parent
+            parent = parent.parent
+        return matches
+
+    def get_all_descendants(self):
+        """Recursively extracts all children, children of children, etc. of this node"""
+        children = [self]
+        for child in self.children:
+            children += child.get_all_descendants()
+        return children
+
+    def click(self):
+        self._record_high_level_action("click")
+        self._make_in_viewport()
+        self._do_action(create_id_based_action(f"click [{self.id}]"))
+
+    def type(self, text):
+        '''
+        if text is "", clears the text in the textbox
+        otherwise, types the text into the textbox
+        '''
+        self._record_high_level_action("type", text)
+        self._make_in_viewport()
+        self._do_action(create_type_action(text=text, element_id=str(self.id)))
+
+    def press_enter(self):
+        self._record_high_level_action("press_enter")
+        self._do_action(create_keyboard_type_action("\n"))
+
+    def go_back(self):
+        ''' go back to the previous page'''
+        return WebThing.root.original_env.step(create_id_based_action(f"go_back"))
+
+    def let_page_load(self):
+        # maybe this should have a way of waiting for longer, or detecting when the page is fully loaded
+        self._do_action(create_none_action())
+
     @staticmethod
     def answer(text):
-        WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (None, "answer", (text,), {})))
+        WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (None, "print", (f'"{text}"',), {})))
         WebThing.low_level_trajectory.append(create_stop_action(text))
 
     def reset_trajectory():
         WebThing.low_level_trajectory = list()
         WebThing.high_level_trajectory = list()
 
+    def _match(self, category, name, nth=None, match_substrings=False, **kwargs):
+        if match_substrings:
+            return (
+                (category is None or re.search(category, self.category))
+                and (name is None or re.search(name, self.name))
+                and (nth is None or self.nth == nth)
+                and all(getattr(self, key, None) == value for key, value in kwargs.items())
+            )
+        else:
+            # regexes must match the full string
+            return (
+                (category is None or re.fullmatch(category, self.category))
+                and (name is None or re.fullmatch(name, self.name))
+                and (nth is None or self.nth == nth)
+                and all(getattr(self, key, None) == value for key, value in kwargs.items())
+            )
+
     def _record_high_level_action(self, method_name, *args, **kwargs):
         WebThing.high_level_trajectory.append((WebThing.URL, WebThing._strip_root(), (self, method_name, args, kwargs)))
 
-    def _do_action(self, action, pause=None):
+    def _do_action(self, action: Action, pause=None):
         """
         helper function that makes sure that states+actions are recorded in the trajectory.
         not used by the agent, which uses higher level functions like `click` and `type` instead.
         """
+        if action['action_type'] in [ActionTypes.CLICK, ActionTypes.TYPE, ActionTypes.GO_BACK]:
+            if WebThing.TOOK_ACTION_ALREADY and WebThing.RAISE_EXCEPTION_FOR_SECOND_ACTION:
+                raise Exception("Attempted to take a second state-changing code action in a single code extension.")
+
+            WebThing.TOOK_ACTION_ALREADY = True
+
         WebThing.low_level_trajectory.append(action)
         if pause:
             old_sleep = self.original_env.sleep_after_execution
@@ -104,6 +202,9 @@ class WebThing():
     def _make_in_viewport(self):
         target_height = 0.3
         old_ys = []
+        # disabled blurring because it seems to mess up clicking menuitems from drop down menus
+        # we might just have to settle for centering not working sometimes?
+        first_time = True
         while True:
             center = self._center()
             y = center[1]
@@ -115,34 +216,35 @@ class WebThing():
             elif y > 1:
                 self._do_action(create_id_based_action(f"scroll [down]"), pause=0.2)
             elif 0 <= y <= target_height:
+                if first_time:
+                    # if some element besides self is focused, blur it
+                    for element in WebThing.root.get_all_descendants():
+                        if element.properties.get("focused", True) and element != self:
+                            WebThing._blur()
+                            break
+
+                    first_time = False
                 self._do_action(create_id_based_action(f"press [arrowup]"), pause=0.2)
             elif 0.5+target_height <= y <= 1:
+                if first_time:
+                    # if some element besides self is focused, blur it
+                    for element in WebThing.root.get_all_descendants():
+                        if element.properties.get("focused", True) and element != self:
+                            WebThing._blur()
+                            break
+
+                    first_time = False
                 self._do_action(create_id_based_action(f"press [arrowdown]"), pause=0.2)
             else:
                 break
 
-    def get_all_children(self):
-        """Recursively extracts all children of this node"""
-        children = [self]
-        for child in self.children:
-            children += child.get_all_children()
-        return children
-
     def __repr__(self):
-        representation = f"{self.category}('{self.name}', {self.id}"
+        representation = f"{self.category}('{self.name}'"
         if self.properties:
             for property_name in self.property_names:
                 representation += f", {property_name}={self.properties[property_name]}"
         if self.children:
             representation += f", children={repr(self.children)}"
-        representation += ")"
-        return representation
-
-    def repr_no_children(self):
-        representation = f"{self.category}('{self.name}', {self.id}"
-        if self.properties:
-            for property_name in self.property_names:
-                representation += f", {property_name}={self.properties[property_name]}"
         representation += ")"
         return representation
 
@@ -198,7 +300,6 @@ class WebThing():
                 return self.name
             else:
                 return self.children[0].markdown()
-
 
         if self.category == "link":
             if "hover_text" in self.properties:
@@ -260,83 +361,6 @@ class WebThing():
 
         return f"UNDEFINED({self.category} {self.name})"
 
-    def _match(self, category, name, nth=None, **kwargs):
-        return (
-            self.category == category
-            and (name is None or re.fullmatch(name, self.name))
-            and (nth is None or self.nth == nth)
-            and all(getattr(self, key, None) == value for key, value in kwargs.items())
-        )
-
-    def find(self, category, name=None, nth=None, **kwargs):
-        all_results = self.find_all(category, name, nth, **kwargs)
-        if all_results:
-            return all_results[0]
-        # if we didn't find it, try (1) literal match, (2) case insensitive match
-        if name:
-            all_results = self.find_all(category, re.escape(name), nth, **kwargs)
-            if all_results: return all_results[0]
-
-            all_results = self.find_all(category, re.compile(name, re.IGNORECASE), nth, **kwargs)
-            if all_results: return all_results[0]
-        return None
-
-    def find_all(self, category, name=None, nth=None, **kwargs):
-        return_value = []
-        if self._match(category, name, nth, **kwargs):
-            return_value.append(self)
-        for child in self.children:
-            return_value.extend(child.find_all(category, name, nth, **kwargs))
-        return return_value
-
-    def find_containing(self, category, query, nth=None, **kwargs):
-        """potentially deprecated now that find support regular expressions"""
-        if (
-            self.category == category
-            and (query is None or query in self.name)
-            and (nth is None or self.nth == nth)
-            and all(getattr(self, key, None) == value for key, value in kwargs.items())
-        ):
-            return self
-        for child in self.children:
-            result = child.find_containing(category, query, nth, **kwargs)
-            if result:
-                return result
-        return None
-
-    def search_forward(self, category, name=None, nth=None, **kwargs):
-        """looks for a match that occurs after this node (NOT including this node!)"""
-        matches = []
-        for child in self.children: matches.extend(child.find_all(category, name, nth, **kwargs))
-        # now we have to go through our parents and search any of their children that come after us
-        parent, latest_child = self.parent, self
-        while parent:
-            # find the index of this node in the parent's children
-            index = parent.children.index(latest_child)
-            suffix = parent.children[index+1:]
-            for sibling in suffix: matches.extend(sibling.find_all(category, name, nth, **kwargs))
-
-            latest_child = parent
-            parent = parent.parent
-        return matches
-
-    def search_backward(self, category, name=None, nth=None, **kwargs):
-        """looks for a match that occurs before this node (NOT including this node!)"""
-        matches = []
-        parent, latest_child = self.parent, self
-        while parent:
-            if parent._match(category, name, nth, **kwargs):
-                matches.append(parent)
-
-            # find the index of this node in the parent's children
-            index = parent.children.index(latest_child)
-            prefix = parent.children[:index]
-            for sibling in reversed(prefix): matches.extend(sibling.find_all(category, name, nth, **kwargs))
-
-            latest_child = parent
-            parent = parent.parent
-        return matches
-
     # make it so that you can do like `thing.a_property`
     def __getattr__(self, name):
         if name in self.properties:
@@ -345,22 +369,28 @@ class WebThing():
             try: return getattr(self.properties["datetime"], name)
             except: pass
         raise AttributeError(f"'{self.category}' object has no attribute '{name}'")
-    
+
     # __getattr__ interferes with pickle
     # so we have to define custom __getstate__ and __setstate__ to handle the properties
     # WARNING: if you add new fields, you need to update __getstate__ and __setstate__ as well
     def __getstate__(self):
         return (self.category, self.name, self.id, self.parent, self.children, self.property_names, self.property_values, self.properties, self.nth)
-    
+
     def __setstate__(self, state):
         self.category, self.name, self.id, self.parent, self.children, self.property_names, self.property_values, self.properties, self.nth = state
         self.original_env = None
-        self.efficient_path = None    
+        self.efficient_path = None
 
     def serialize(self, indent=0):
         serialization = f"{'    '*indent}[{self.id}] {self.category} '{self.name}'"
         if self.properties:
-            serialization += " " + " ".join(f"{key}={self.properties[key]}" for key in self.property_names)
+            try:
+                serialization += " " + " ".join(f"{key}={self.properties[key]}" for key in self.property_names)
+            except KeyError as e:
+                print(self.property_names)
+                print(self.properties.keys())
+                import pdb; pdb.set_trace()
+
         serialization += "\n"
         for child in self.children:
             serialization += child.serialize(indent+1)
@@ -370,40 +400,30 @@ class WebThing():
         """pretty print it in a way that the llm (hopefully) understands"""
         serialization = f"{'    '*indent}category='{self.category}', name='{self.name}', nth={self.nth}"
         if self.properties:
-            serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.property_names)
+            try:
+                serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.property_names)
+            except KeyError as e:
+                print(self.property_names)
+                print(self.properties.keys())
+                import pdb; pdb.set_trace()
+
         serialization += "\n"
         for child in self.children:
             serialization += child.pretty(indent+1)
         return serialization
 
-    def find_thing_by_id(self, id):
-        if self.id == id:
-            return self
-        for child in self.children:
-            result = child.find_thing_by_id(id)
-            if result:
-                return result
-        return None
-
-    def get_path(self):
-        if self.parent:
-            return self.parent.get_path() + " / " + self.repr_no_children()
-        return self.repr_no_children()
-
     def pretty_path(self, is_target=True):
-        representation = f"{self.category}({repr(self.name)}"
+        representation = f"{self.category}({repr(self.name)}, nth={self.nth}"
         if self.properties:
             for property_name in self.property_names:
                 representation += f", {property_name}={self.properties[property_name]}"
         representation += ")"
 
         if is_target:
-            #assert self.parent
             if self.parent:
-                parent_path = self.parent.pretty_path(is_target=False)
+                return representation + f", nth={self.nth}, which is under " + self.parent.pretty_path(is_target=False)
             else:
-                parent_path = "none"
-            return representation + f", nth={self.nth}, which is under " + parent_path
+                return representation
         else:
             if self.parent:
                 if "list" in self.category and self.name == "":
@@ -411,7 +431,6 @@ class WebThing():
                 return self.parent.pretty_path(is_target=False) + " / " + representation
             else:
                 return representation
-
 
     def clean(self):
         # analogous to clean_accessibility_tree, but with extra cleaning heuristics
@@ -442,7 +461,7 @@ class WebThing():
                 self.property_values.append(child.name)
                 self.properties["relative"] = child.name
                 continue
-            if child.category.lower() in ["article", "contentinfo", "svgroot"]:
+            if child.category.lower() in ["article", "contentinfo", "svgroot"] and len(child.children) == 0:
                 continue
             if self.category == "button":
                 continue
@@ -468,154 +487,30 @@ class WebThing():
                 self.properties.pop("focused")
         return self
 
-    def let_page_load(self):
-        # maybe this should have a way of waiting for longer, or detecting when the page is fully loaded
-        self._make_in_viewport()
-        self._do_action(create_none_action())
-
-    def click(self):
-        self._record_high_level_action("click")
-        self._make_in_viewport()
-        # action = create_click_action(element_role=self.category, element_name=self.name, nth=self.nth)
+    # def hover(self):
+        # self._record_high_level_action("hover")
+        # action = create_hover_action(element_role=self.category, element_name=self.name, nth=self.nth)
         # self._do_action(action)
-        self._do_action(create_id_based_action(f"click [{self.id}]"))
-
-    def type(self, text):
-        self._record_high_level_action("type", text)
-        self._make_in_viewport()
-        self._do_action(create_type_action(text=text, element_id=str(self.id)))
-
-    def press_enter(self):
-        self._record_high_level_action("press enter")
-        self._make_in_viewport()
-        self._do_action(create_keyboard_type_action("\n"))
-
-    def type2(self, text):
-        def f():
-            self.original_env.page.get_by_role(self.category, name=self.name).click()
-            self.original_env.page.keyboard.type(text)
-            #  self.original_env.page.get_by_role(self.category, name=self.name).fill(text)
-        self.original_env.step2(f)
-
-    def type3(self, text):
-        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).pressSequentially(text)
-        self.original_env.step2(f)
-
-    def click2(self):
-        ''' experimenting with alternative ui for actions'''
-        f = lambda: self.original_env.page.get_by_role(self.category, name=self.name).click()
-        self.original_env.step2(f)
-
-    def hover(self):
-        self._record_high_level_action("hover")
-        action = create_hover_action(element_role=self.category, element_name=self.name, nth=self.nth)
-        self._do_action(action)
         # self._make_in_viewport()
         # self._do_action(create_id_based_action(f"hover [{self.id}]"))
 
-    def has_duplicate(self, category, name):
-        all_things = self.all_things()
-        return 1 < len([t for t in all_things if t[1] == category and t[2] == name])
-
-    def get_node_list(self):
-        nodes = [self]
-        for child in self.children:
-            nodes += child.get_node_list()
-
-        return nodes
+    def _blur():
+        """ remove keyboard focus from currently focused element """
+        # per Claude AI recommendation
+        WebThing.root.original_env.page.locator('body').evaluate(
+            "() => document.activeElement && document.activeElement.blur()")
 
     def assign_nths(root):
-        global NODE_LIST
-        NODE_LIST = root.get_node_list()
+        nodes = root.get_all_descendants()
         # map (category, name) to how many times we've seen it
         nth_dict = {}
-        for node in NODE_LIST:
+        for node in nodes:
             key = (node.category, node.name)
             if key not in nth_dict:
                 nth_dict[key] = 0
             else:
                 nth_dict[key] += 1
             node.nth = nth_dict[key]
-
-    def mark_ambiguous_children(self):
-        self.ambiguous_children = []
-        subtree = [self]
-        child_subtrees = []
-        for child in self.children:
-            child_subtree = child.mark_ambiguous_children()
-            subtree += child_subtree
-            child_subtrees.append(child_subtree)
-
-        for i in range(len(child_subtrees)):
-            for node in child_subtrees[i]:
-                if (node.category, node.name) == (self.category, self.name):
-                    # just the child is a duplicate
-                    self.parent.ambiguous_children.append(node.id)
-                for j in range(i+1, len(child_subtrees)):
-                    for other in child_subtrees[j]:
-                        if (node.category, node.name) == (other.category, other.name):
-                            # both are duplicates
-                            self.ambiguous_children.append(node.id)
-                            self.ambiguous_children.append(other.id)
-
-        return subtree
-
-    def mark_efficient_paths(self, path_to_node):
-        possible_parents = []
-        for node in path_to_node[::-1]:
-            # each node stores nodes in subtree that are ambiguous to find from that node
-            if self.id not in node.ambiguous_children:
-                possible_parents.append(node)
-            else:
-                # all previous nodes along path will also be ambiguous
-                break
-
-        if len(possible_parents) == 0:
-            # no unambiguous path possible... just navigate to parent then to self
-            possible_parents = [path_to_node[-1]]
-
-        best_parent = None
-        best_length = float('inf')
-        for node in possible_parents:
-            path_length = len(node.efficient_path)
-            if path_length < best_length:
-                best_parent = node
-                best_length = path_length
-
-        self.efficient_path = best_parent.efficient_path + [self]
-        for child in self.children:
-            child.mark_efficient_paths(path_to_node + [self])
-
-    def mark_efficient_paths_from_root(root):
-        root.mark_ambiguous_children()
-        root.efficient_path = []
-        for child in root.children:
-            child.mark_efficient_paths([root])
-
-    def get_find_path(self, efficient=True):
-        if efficient:
-            if self.efficient_path is None:
-                WebThing.mark_efficient_paths_from_root()
-            return [(n.category, n.name) for n in self.efficient_path]
-        else:
-            path = []
-            n = self
-            while n.parent:
-                path.append(n)
-                n = n.parent
-
-            path = path[::-1]
-            return [(n.category, n.name) for n in path]
-
-    def all_things(self):
-        # returns a list of all the elements as (id, category, name) tuples
-        things = [(self.id, self.category, self.name)]
-        for child in self.children:
-            things += child.all_things()
-        return things
-
-    def get_text(self):
-        return self.name
 
     # Removes all non-pickle-able things from the root, particularly which refer to the environment
     # Returns a new root, but without updating the root pointer

@@ -93,6 +93,9 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def exact_match(ref: str, pred: str) -> float:
+        # print(f'{ref=}')
+        print(f"exact match prediction = '{pred}'")
+        print(f"exact match refdiction = '{ref}'")
         return float(
             StringEvaluator.clean_answer(pred)
             == StringEvaluator.clean_answer(ref)
@@ -103,6 +106,10 @@ class StringEvaluator(Evaluator):
     def must_include(ref: str, pred: str, tokenize: bool = False) -> float:
         clean_ref = StringEvaluator.clean_answer(ref)
         clean_pred = StringEvaluator.clean_answer(pred)
+        # print(f'{clean_ref=}')
+        if len(clean_pred) < 200:
+            print(f"must include prediction = '{clean_pred}'")
+
         # tokenize the answer if the ref is a single word
         # prevent false positive (e.g, 0)
         if (
@@ -118,6 +125,8 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def fuzzy_match(ref: str, pred: str, intent: str) -> float:
+        print(f"fuzzy match prediction = '{pred}'")
+
         # llm_fuzzy_match was messing up when pred is blank
         if len(pred) == 0:
             return 1.0 if len(ref) == 0 else 0.0
@@ -126,6 +135,7 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def ua_match(ref: str, pred: str, intent: str) -> float:
+        print("task is N/A prediction = '{pred}'")
         return llm_ua_match(pred, ref, intent)
 
     def __call__(
@@ -218,18 +228,15 @@ class URLEvaluator(Evaluator):
             return base_paths, queries
 
         pred = clean_url(page.url)
+        # print(f'{pred=}')
         ref_urls = configs["eval"]["reference_url"].split(" |OR| ")
+        # print(f'{ref_urls=}')
         ref_urls = [clean_url(url) for url in ref_urls]
 
         matching_rule = configs["eval"].get("url_note", "GOLD in PRED")
         if matching_rule == "GOLD in PRED":
             ref_base_paths, ref_queries = parse_urls(ref_urls)
-            print(f'{ref_base_paths=}')
             pred_base_paths, pred_query = parse_url(pred)
-            print(f'{pred_base_paths=}')
-
-            print(f'{ref_queries=}')
-            print(f'{pred_query=}')
 
             base_score = float(
                 any(
@@ -248,7 +255,6 @@ class URLEvaluator(Evaluator):
                     )
                 )
             score = base_score * query_score
-            print(f'url score {score}')
 
         else:
             raise ValueError(f"Unknown matching rule: {matching_rule}")
@@ -343,6 +349,7 @@ class HTMLContentEvaluator(Evaluator):
                 raise ValueError(
                     f"Unknown required_contents: {target['required_contents'].keys()}"
                 )
+
         return score
 
 

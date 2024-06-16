@@ -144,9 +144,9 @@ def gitlab_get_project_memeber_role(page: Page, account_name: str) -> str:
 
 
 def llm_fuzzy_match(pred: str, reference: str, question: str) -> float:
+    """Check whether the prediction matches the reference with GPT4-turbo"""
     print(f'{pred=}')
     print(f'{reference=}')
-    """Check whether the prediction matches the reference with GPT4-turbo"""
     messages: list[dict[str, Any]] = []
     # construct the question to ask
     message = "Help a teacher to grade the answer of a student given a question. Keep in mind that the student may use different phrasing or wording to answer the question. The goal is to evaluate whether the answer is semantically equivalent to the reference answer.\n"

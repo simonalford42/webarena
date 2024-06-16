@@ -830,14 +830,15 @@ async def aexecute_mouse_hover(left: float, top: float, page: APage) -> None:
     )
 
 
-def execute_mouse_click(left: float, top: float, page: Page) -> None:
+def execute_mouse_click(left: float, top: float, page: Page, doubleclick=False) -> None:
     """Click at coordinates (left, top)."""
     viewport_size = page.viewport_size
     assert viewport_size
     x, y = left * viewport_size["width"], top * viewport_size["height"]
-    page.mouse.click(
-        left * viewport_size["width"], top * viewport_size["height"]
-    )
+    if doubleclick:
+        page.mouse.dblclick(x, y)
+    else:
+        page.mouse.click(x, y)
 
 
 async def aexecute_mouse_click(left: float, top: float, page: APage) -> None:
@@ -887,9 +888,10 @@ async def aexecute_click_current(page: APage) -> None:
 def execute_type(keys: list[int], page: Page) -> None:
     """Send keystrokes to the focused element."""
     text = "".join([_id2key[key] for key in keys])
-    # page.keyboard.press("Control+A")
-    # page.keyboard.press("Backspace")
-    page.keyboard.type(text)
+    if len(text) == 0:
+        page.keyboard.press("Backspace")
+    else:
+        page.keyboard.type(text)
 
 
 async def aexecute_type(keys: list[int], page: APage) -> None:
@@ -1172,8 +1174,13 @@ def execute_action(
             if action["element_id"] is not None:
                 element_id = action["element_id"]
                 element_center = obseration_processor.get_element_center(element_id)  # type: ignore[attr-defined]
-                execute_mouse_click(element_center[0], element_center[1], page)
-                execute_type(action["text"], page)
+                if len(action['text']) == 0:
+                    # clear the text by double clicking and pressing backspace
+                    execute_mouse_click(element_center[0], element_center[1], page, doubleclick=True)
+                    execute_type(action["text"], page)
+                else:
+                    execute_mouse_click(element_center[0], element_center[1], page)
+                    execute_type(action["text"], page)
             elif action["element_role"] is not None and action["element_name"] is not None:
                 element_role = int(action["element_role"])
                 element_name = action["element_name"]
