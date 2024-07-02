@@ -45,7 +45,7 @@ def create_empty_metadata() -> ObservationMetadata:
     }
 
 
-class TextObervationProcessor(ObservationProcessor):
+class TextObservationProcessor(ObservationProcessor):
     def __init__(
         self,
         observation_type: str,
@@ -77,7 +77,7 @@ class TextObervationProcessor(ObservationProcessor):
                 self.already_forced = True
 
                 # call the static method
-                response = TextObervationProcessor.get_bounding_client_rect(
+                response = TextObservationProcessor.get_bounding_client_rect(
                     self.client, self.backend_node_id
                 )
 
@@ -100,7 +100,7 @@ class TextObervationProcessor(ObservationProcessor):
 
         @staticmethod
         def constant(bounding_box):
-            bbth = TextObervationProcessor.BoundingBoxThunk(None, None)
+            bbth = TextObservationProcessor.BoundingBoxThunk(None, None)
             bbth.bounding_box = bounding_box
             bbth.already_forced = True
             return bbth
@@ -284,10 +284,10 @@ class TextObervationProcessor(ObservationProcessor):
 
             # get the bound
             if cur_node["parentId"] == "-1":
-                cur_node["union_bound"] = TextObervationProcessor.BoundingBoxThunk.constant([0.0, 0.0, 10.0, 10.0])
+                cur_node["union_bound"] = TextObservationProcessor.BoundingBoxThunk.constant([0.0, 0.0, 10.0, 10.0])
             else:
                 # lazy evaluation
-                cur_node["union_bound"] = TextObervationProcessor.BoundingBoxThunk(
+                cur_node["union_bound"] = TextObservationProcessor.BoundingBoxThunk(
                     client, cur_node["backendNodeId"]
                 )
 
@@ -429,10 +429,10 @@ class TextObervationProcessor(ObservationProcessor):
             backend_node_id = str(node["backendDOMNodeId"])
             if node["role"]["value"] == "RootWebArea":
                 # always inside the viewport
-                node["union_bound"] = TextObervationProcessor.BoundingBoxThunk.constant([0.0, 0.0, 10.0, 10.0])
+                node["union_bound"] = TextObservationProcessor.BoundingBoxThunk.constant([0.0, 0.0, 10.0, 10.0])
             else:
                 # lazy evaluation
-                node["union_bound"] = TextObervationProcessor.BoundingBoxThunk(
+                node["union_bound"] = TextObservationProcessor.BoundingBoxThunk(
                     client, backend_node_id
                 )
         # filter nodes that are not in the current viewport
@@ -819,7 +819,7 @@ class ObservationHandler:
         viewport_size: ViewportSize,
     ) -> None:
         self.main_observation_type = main_observation_type
-        self.text_processor = TextObervationProcessor(
+        self.text_processor = TextObservationProcessor(
             text_observation_type, current_viewport_only, viewport_size
         )
         self.image_processor = ImageObservationProcessor(

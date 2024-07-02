@@ -48,9 +48,9 @@ class ParsedPlaywrightCode(TypedDict):
     keywords: dict[str, Any]
 
 
-from browser_env.processors import (
+from webarena.browser_env.processors import (
     ObservationProcessor,
-    TextObervationProcessor,
+    TextObservationProcessor,
 )
 
 

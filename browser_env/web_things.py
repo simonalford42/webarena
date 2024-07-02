@@ -3,6 +3,9 @@ from webarena.browser_env import create_id_based_action, create_type_action, cre
 import dateparser
 import re
 
+class SecondActionException(Exception):
+    pass
+
 class WebThing():
     root = None # effectively a global variable that refers to the current state of the web page
 
@@ -178,7 +181,7 @@ class WebThing():
         """
         if action['action_type'] in [ActionTypes.CLICK, ActionTypes.TYPE, ActionTypes.GO_BACK]:
             if WebThing.TOOK_ACTION_ALREADY and WebThing.RAISE_EXCEPTION_FOR_SECOND_ACTION:
-                raise Exception("Attempted to take a second state-changing code action in a single code extension.")
+                raise SecondActionException("Attempted a second action in a single code extension")
 
             WebThing.TOOK_ACTION_ALREADY = True
 
@@ -400,12 +403,7 @@ class WebThing():
         """pretty print it in a way that the llm (hopefully) understands"""
         serialization = f"{'    '*indent}category='{self.category}', name='{self.name}', nth={self.nth}"
         if self.properties:
-            try:
-                serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.property_names)
-            except KeyError as e:
-                print(self.property_names)
-                print(self.properties.keys())
-                import pdb; pdb.set_trace()
+            serialization += ", " + ", ".join(f"{key}={repr(self.properties[key])}" for key in self.properties)
 
         serialization += "\n"
         for child in self.children:
