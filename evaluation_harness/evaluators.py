@@ -12,6 +12,7 @@ from typing import Any, Tuple, Union
 from beartype import beartype
 from nltk.tokenize import word_tokenize  # type: ignore
 from playwright.sync_api import CDPSession, Page
+import playwright
 
 from webarena.browser_env.web_things import WebThing
 from webarena.browser_env.actions import Action, create_stop_action
@@ -90,8 +91,8 @@ class StringEvaluator(Evaluator):
     @beartype
     def exact_match(ref: str, pred: str) -> float:
         # print(f'{ref=}')
-        print(f"exact match prediction = '{pred}'")
-        print(f"exact match refdiction = '{ref}'")
+        # print(f"exact match prediction = '{pred}'")
+        # print(f"exact match ref        = '{ref}'")
         return float(
             StringEvaluator.clean_answer(pred)
             == StringEvaluator.clean_answer(ref)
@@ -103,8 +104,8 @@ class StringEvaluator(Evaluator):
         clean_ref = StringEvaluator.clean_answer(ref)
         clean_pred = StringEvaluator.clean_answer(pred)
         # print(f'{clean_ref=}')
-        if len(clean_pred) < 200:
-            print(f"must include prediction = '{clean_pred}'")
+        # if len(clean_pred) < 200:
+            # print(f"must include prediction = '{clean_pred}'")
 
         # tokenize the answer if the ref is a single word
         # prevent false positive (e.g, 0)
@@ -121,7 +122,7 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def fuzzy_match(ref: str, pred: str, intent: str) -> float:
-        print(f"fuzzy match prediction = '{pred}'")
+        # print(f"fuzzy match prediction = '{pred}'")
 
         # llm_fuzzy_match was messing up when pred is blank
         if len(pred) == 0:
@@ -131,7 +132,7 @@ class StringEvaluator(Evaluator):
     @staticmethod
     @beartype
     def ua_match(ref: str, pred: str, intent: str) -> float:
-        print("task is N/A prediction = '{pred}'")
+        # print("task is N/A prediction = '{pred}'")
         return llm_ua_match(pred, ref, intent)
 
     def __call__(
@@ -286,8 +287,12 @@ class HTMLContentEvaluator(Evaluator):
 
             # navigate to that url
             if target_url != "last":
-                page.goto(target_url)
-                time.sleep(3)  # TODO [shuyanzh]: fix this hard-coded sleep
+                try:
+                    page.goto(target_url)
+                    time.sleep(3)  # TODO [shuyanzh]: fix this hard-coded sleep
+                except playwright._impl._errors.Error as e:
+                    print(f"Error while going to target url {target_url}: {e}")
+                    return 0.0
 
             # empty, use the full page
             if not locator.strip():
