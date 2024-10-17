@@ -8,13 +8,9 @@ from playwright.sync_api import CDPSession, Page
 
 from webarena.browser_env.env_config import (
     ACCOUNTS,
-    GITLAB,
-    MAP,
-    REDDIT,
     SHOPPING,
-    SHOPPING_ADMIN,
-    WIKIPEDIA,
 )
+
 from webarena.llms.providers.openai_utils import (
     generate_from_openai_chat_completion,
 )

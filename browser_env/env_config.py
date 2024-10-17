@@ -1,15 +1,15 @@
 # websites domain
 import os
+import utils
 
-REDDIT = os.environ.get("REDDIT", "")
-SHOPPING = os.environ.get("SHOPPING", "")
-SHOPPING_ADMIN = os.environ.get("SHOPPING_ADMIN", "")
-GITLAB = os.environ.get("GITLAB", "")
-WIKIPEDIA = os.environ.get("WIKIPEDIA", "")
-MAP = os.environ.get("MAP", "")
-HOMEPAGE = os.environ.get("HOMEPAGE", "")
-
-
+url_dict = utils.get_urls()
+REDDIT = url_dict["reddit"]
+SHOPPING = url_dict["shopping"]
+SHOPPING_ADMIN = url_dict["shopping_admin"]
+GITLAB = url_dict["gitlab"]
+WIKIPEDIA = url_dict["wikipedia"]
+MAP = url_dict["map"]
+HOMEPAGE = url_dict["homepage"]
 
 assert (
     REDDIT

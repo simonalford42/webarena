@@ -11,10 +11,10 @@ from playwright.sync_api import sync_playwright
 
 from webarena.browser_env.env_config import (
     ACCOUNTS,
-    GITLAB,
     REDDIT,
     SHOPPING,
     SHOPPING_ADMIN,
+    GITLAB,
 )
 
 HEADLESS = True
@@ -92,7 +92,7 @@ def renew_comb(comb: list[str], auth_folder: str = "./.auth") -> None:
     if "gitlab" in comb:
         username = ACCOUNTS["gitlab"]["username"]
         password = ACCOUNTS["gitlab"]["password"]
-        page.goto(f"{GITLAB}/users/sign_in")
+        page.goto(f"{GITLAB_URL}/users/sign_in")
         page.get_by_test_id("username-field").click()
         page.get_by_test_id("username-field").fill(username)
         page.get_by_test_id("username-field").press("Tab")
@@ -109,7 +109,13 @@ def get_site_comb_from_filepath(file_path: str) -> list[str]:
     return comb
 
 
-def main(auth_folder: str = "./.auth") -> None:
+def main(auth_folder: str = "./.auth", gitlab_url=None) -> None:
+    if gitlab_url is not None:
+        global GITLAB_URL
+        GITLAB_URL = gitlab_url
+        global URLS
+        URLS[0] = f"{GITLAB_URL}/-/profile"
+
     pairs = list(combinations(SITES, 2))
 
     max_workers = 8

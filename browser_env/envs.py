@@ -12,6 +12,7 @@ from beartype import beartype
 from beartype.door import is_bearable
 from gymnasium import Env
 from gymnasium.spaces import Box, Text
+import utils
 from playwright.sync_api import (
     CDPSession,
     Page,
@@ -84,6 +85,7 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
         viewport_size: ViewportSize = {"width": 1280, "height": 720},
         save_trace_enabled: bool = False,
         sleep_after_execution: float = 0.0,
+        port: int = None,
     ):
         # TODO: make Space[Action] = ActionSpace
         self.action_space = get_action_space()  # type: ignore[assignment]
@@ -94,6 +96,7 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
         self.viewport_size = viewport_size
         self.save_trace_enabled = save_trace_enabled
         self.sleep_after_execution = sleep_after_execution
+        self.port = port
 
         match observation_type:
             case "html" | "accessibility_tree":
@@ -228,6 +231,10 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
     def close(self) -> None:
         if self.reset_finished:
             self.context_manager.__exit__()
+
+        if self.port is not None:
+            utils.release_gitlab_port(self.port)
+
 
     def step2(self, f):
         '''
